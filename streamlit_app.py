@@ -106,4 +106,5 @@ if st.button("Ask", type="primary") and question.strip():
         st.info("No chunks matched.")
     for n, (i, s) in enumerate(hits, 1):
         with st.expander(f"{n}. {CHUNKS[i]['source']} (chunk {CHUNKS[i]['chunk_id']}) - {label}: {s:.4f}"):
-            st.write(CHUNKS[i]["text"])te(CHUNKS[i]["text"])
+            st.write(CHUNKS[i]["text"])
+            
