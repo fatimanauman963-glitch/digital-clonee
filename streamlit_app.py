@@ -16,7 +16,7 @@ def tok(t):
 @st.cache_resource(show_spinner="Loading knowledge base...")
 def load():
     chunks = []
-    for path in sorted(glob.glob("data/*.md") + glob.glob("data/*.txt")):
+    for path in sorted(glob.glob("data/.md") + glob.glob("data/.txt")):
         words = re.sub(r"<!--.*?-->", "", open(path, encoding="utf-8").read(), flags=re.S).split()
         step = CHUNK_WORDS - OVERLAP
         for i, start in enumerate(range(0, max(len(words), 1), step)):
@@ -57,17 +57,7 @@ def hybrid_search(q, k=TOP_K):
             scores[i] = scores.get(i, 0.0) + 1.0 / (RRF_K + rank)
     return sorted(scores.items(), key=lambda x: -x[1])[:k]
 
-PROMPT = """You are the AI clone of {name}, a software engineering student.
-Speak in the first person, in a friendly, casual tone with short sentences.
-Rules:
-1. Answer ONLY using the CONTEXT below. It comes from my own documents.
-2. If the context does not contain the answer, say: "I don't have that in my notes." Do not guess or invent facts about me.
-3. Never share phone numbers, addresses, ID numbers or other private details.
-4. If asked whether you are the real person, say you are an AI clone of {name}.
-CONTEXT:
-{context}
-QUESTION:
-{question}"""
+PROMPT = """You are the AI clone of {name}, a software engineering student. Speak in the first person, in a friendly, casual tone with short sentences. Rules: 1. Answer ONLY using the CONTEXT below. It comes from my own documents. 2. If the context does not contain the answer, say: "I don't have that in my notes." Do not guess or invent facts about me. 3. Never share phone numbers, addresses, ID numbers or other private details. 4. If asked whether you are the real person, say you are an AI clone of {name}. CONTEXT: {context} QUESTION: {question}"""
 
 def get_token():
     try:
@@ -82,17 +72,20 @@ def generate(question, hits):
     token = get_token()
     if not token:
         return "(Templated answer - no API key set.) Most relevant note: " + CHUNKS[hits[0][0]]["text"][:400] + "..."
-    try:
-        client = InferenceClient(model=MODEL_ID, token=token)
-        out = client.chat_completion(
-            messages=[{"role": "user", "content": PROMPT.format(name=NAME, context=context, question=question)}],
-            max_tokens=400, temperature=0.3)
-        return out.choices[0].message.content.strip()
-    except Exception as e:
-        return f"(LLM unavailable: {type(e).__name__}.) Most relevant note: " + CHUNKS[hits[0][0]]["text"][:400] + "..."
+    prompt = PROMPT.format(name=NAME, context=context, question=question)
+    errors = []
+    for model_id in dict.fromkeys([MODEL_ID, "Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.2-3B-Instruct", "HuggingFaceH4/zephyr-7b-beta"]):
+        try:
+            client = InferenceClient(model=model_id, token=token)
+            out = client.chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=400, temperature=0.3)
+            return out.choices[0].message.content.strip()
+        except Exception as e:
+            errors.append(f"{model_id}: {str(e)[:150]}")
+    st.session_state["llm_errors"] = errors
+    return "(LLM unavailable.) Most relevant note: " + CHUNKS[hits[0][0]]["text"][:400] + "..."
 
-st.set_page_config(page_title=f"{NAME}'s Digital Clone", page_icon="🤖")
-st.error("🤖 This is an AI clone, not the real person.")
+st.set_page_config(page_title=f"{NAME}'s Digital Clone", page_icon="ðŸ¤–")
+st.error("ðŸ¤– This is an AI clone, not the real person.")
 st.title(f"{NAME}'s Digital Clone")
 st.caption(f"Ask me anything about {NAME}. I answer only from my own notes.")
 
@@ -106,9 +99,11 @@ if st.button("Ask", type="primary") and question.strip():
     st.markdown("### Answer")
     st.write(answer)
     label = {"BM25 only": "BM25 score", "Dense only": "cosine", "Hybrid": "RRF score"}[mode]
+    if st.session_state.get("llm_errors"):
+        st.warning("LLM error details: " + " | ".join(st.session_state.pop("llm_errors")))
     st.markdown("### Retrieved chunks")
     if not hits:
         st.info("No chunks matched.")
     for n, (i, s) in enumerate(hits, 1):
         with st.expander(f"{n}. {CHUNKS[i]['source']} (chunk {CHUNKS[i]['chunk_id']}) - {label}: {s:.4f}"):
-            st.write(CHUNKS[i]["text"])
+            st.write(CHUNKS[i]["text"])te(CHUNKS[i]["text"])
