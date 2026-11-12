@@ -16,7 +16,10 @@ def tok(t):
 @st.cache_resource(show_spinner="Loading knowledge base...")
 def load():
     chunks = []
-    for path in sorted(glob.glob("data/.md") + glob.glob("data/.txt")):
+    here = os.path.dirname(os.path.abspath(_file_))
+    found = glob.glob(os.path.join(here, "*", ".md"), recursive=True) + glob.glob(os.path.join(here, "*", ".txt"), recursive=True)
+    found = [p for p in found if os.path.basename(p).lower() not in ("readme.md", "requirements.txt") and "/." not in p]
+    for path in sorted(found):
         words = re.sub(r"<!--.*?-->", "", open(path, encoding="utf-8").read(), flags=re.S).split()
         step = CHUNK_WORDS - OVERLAP
         for i, start in enumerate(range(0, max(len(words), 1), step)):
@@ -25,6 +28,9 @@ def load():
                 break
             chunks.append({"source": os.path.basename(path), "chunk_id": i, "text": " ".join(piece)})
     texts = [c["text"] for c in chunks]
+    if not texts:
+        st.error("No data files found. Put your .md files inside a 'data' folder in the GitHub repo. Files seen here: " + ", ".join(sorted(os.listdir(here))))
+        st.stop()
     bm25 = BM25Okapi([tok(t) for t in texts])
     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     emb = None
@@ -107,4 +113,3 @@ if st.button("Ask", type="primary") and question.strip():
     for n, (i, s) in enumerate(hits, 1):
         with st.expander(f"{n}. {CHUNKS[i]['source']} (chunk {CHUNKS[i]['chunk_id']}) - {label}: {s:.4f}"):
             st.write(CHUNKS[i]["text"])
-            
